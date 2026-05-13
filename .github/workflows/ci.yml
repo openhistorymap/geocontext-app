@@ -48,7 +48,7 @@ jobs:
         run: node scripts/gen-icon.cjs
 
       - name: svelte-check
-        run: npx svelte-check --tsconfig ./tsconfig.json
+        run: npm run check
 
       - name: build frontend (sveltekit)
         run: npm run build
