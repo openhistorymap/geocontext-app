@@ -133,3 +133,36 @@ export async function importAssetLocal(
 export async function deleteRepoAsset(folder: string, relPath: string): Promise<void> {
   await invoke('delete_repo_asset', { folder, relPath });
 }
+
+export interface WorkspaceEntry {
+  path: string;
+  title: string | null;
+  filename: string | null;
+  last_opened_unix: number;
+  reachable: boolean;
+}
+
+export async function listWorkspaces(): Promise<WorkspaceEntry[]> {
+  if (!isTauri()) return [];
+  return await invoke<WorkspaceEntry[]>('list_workspaces');
+}
+
+export async function touchWorkspace(
+  path: string,
+  title?: string | null,
+  filename?: string | null
+): Promise<WorkspaceEntry[]> {
+  return await invoke<WorkspaceEntry[]>('touch_workspace', {
+    path,
+    title: title ?? null,
+    filename: filename ?? null
+  });
+}
+
+export async function removeWorkspace(path: string): Promise<WorkspaceEntry[]> {
+  return await invoke<WorkspaceEntry[]>('remove_workspace', { path });
+}
+
+export async function forgetUnreachableWorkspaces(): Promise<WorkspaceEntry[]> {
+  return await invoke<WorkspaceEntry[]>('forget_unreachable_workspaces');
+}

@@ -5,6 +5,7 @@
   import MapPreview from '$lib/components/MapPreview.svelte';
   import JsonView from '$lib/components/JsonView.svelte';
   import AssetsBrowser from '$lib/components/AssetsBrowser.svelte';
+  import WorkspaceMenu from '$lib/components/WorkspaceMenu.svelte';
   import { validate, summarize } from '$lib/validate';
   import { emptyGeoContext, type GeoContext } from '$lib/types';
   import {
@@ -12,7 +13,9 @@
     pickFolder,
     loadGeoContext,
     saveGeoContext,
-    createGeoContextRepo
+    createGeoContextRepo,
+    touchWorkspace,
+    type WorkspaceEntry
   } from '$lib/tauri';
   import type { RepoCoords } from '$lib/assetPath';
 
@@ -45,24 +48,36 @@
     return n.toString().padStart(2, '0');
   }
 
+  let menu = $state<WorkspaceMenu | undefined>(undefined);
+
+  function confirmDiscardIfDirty(): boolean {
+    if (!dirty) return true;
+    return confirm('You have unsaved changes — switch anyway and lose them?');
+  }
+
+  async function loadFolder(folder: string) {
+    const r = await loadGeoContext(folder);
+    const parsed = JSON.parse(r.content) as GeoContext;
+    working = parsed;
+    opened = { folder: r.folder, filename: r.filename as 'geocontext.json' | 'gcx.json' };
+    baseline = JSON.stringify(working);
+    dirty = false;
+    const m = folder.split(/[\\/]/).pop()?.match(/^([^_/-]+)[-_]([^_/-]+)/);
+    if (m && (!repoUser || !repoProject)) { repoUser = m[1]; repoProject = m[2]; }
+    await touchWorkspace(r.folder, parsed.title ?? null, r.filename);
+    await menu?.refresh();
+  }
+
   async function openRepo() {
+    if (!confirmDiscardIfDirty()) return;
     const folder = await pickFolder();
     if (!folder) return;
-    try {
-      const r = await loadGeoContext(folder);
-      const parsed = JSON.parse(r.content) as GeoContext;
-      working = parsed;
-      opened = { folder: r.folder, filename: r.filename as 'geocontext.json' | 'gcx.json' };
-      baseline = JSON.stringify(working);
-      dirty = false;
-      const m = folder.split(/[\\/]/).pop()?.match(/^([^_/-]+)[-_]([^_/-]+)/);
-      if (m && !repoUser) { repoUser = m[1]; repoProject = m[2]; }
-    } catch (e) {
-      alert(`Failed to load: ${(e as Error).message}`);
-    }
+    try { await loadFolder(folder); }
+    catch (e) { alert(`Failed to load: ${(e as Error).message}`); }
   }
 
   async function newRepo() {
+    if (!confirmDiscardIfDirty()) return;
     const folder = await pickFolder();
     if (!folder) return;
     const gc = emptyGeoContext();
@@ -72,9 +87,17 @@
       opened = { folder, filename: 'geocontext.json' };
       baseline = JSON.stringify(working);
       dirty = false;
+      await touchWorkspace(folder, gc.title ?? null, 'geocontext.json');
+      await menu?.refresh();
     } catch (e) {
       alert(`Failed to create: ${(e as Error).message}`);
     }
+  }
+
+  async function switchTo(entry: WorkspaceEntry) {
+    if (!confirmDiscardIfDirty()) return;
+    try { await loadFolder(entry.path); }
+    catch (e) { alert(`Failed to switch: ${(e as Error).message}`); }
   }
 
   async function save() {
@@ -84,6 +107,8 @@
       await saveGeoContext(opened.folder, opened.filename, content);
       baseline = JSON.stringify(working);
       dirty = false;
+      await touchWorkspace(opened.folder, working.title ?? null, opened.filename);
+      await menu?.refresh();
     } catch (e) {
       alert(`Save failed: ${(e as Error).message}`);
     }
@@ -123,17 +148,20 @@
     </h1>
 
     <div class="plate__meta">
+      <WorkspaceMenu
+        bind:this={menu}
+        activePath={opened?.folder ?? null}
+        onpick={switchTo}
+        onnew={newRepo}
+        onopenfolder={openRepo}
+      />
       {#if opened}
-        <span class="path mono">{shortPath(`${opened.folder}/${opened.filename}`)}</span>
+        <span class="path mono" title={`${opened.folder}/${opened.filename}`}>{shortPath(`${opened.folder}/${opened.filename}`)}</span>
         {#if dirty}<span class="status">Unsaved</span>{/if}
-      {:else}
-        <span class="meta">No repository open. Open or create one to begin.</span>
       {/if}
     </div>
 
     <div class="plate__actions">
-      <button class="btn" onclick={openRepo} disabled={!tauri}>Open</button>
-      <button class="btn" onclick={newRepo} disabled={!tauri}>New</button>
       <button class="btn" onclick={resetModel}>Reset</button>
       {#if opened?.filename === 'gcx.json'}
         <button class="btn" onclick={saveAsGeoContext} title="rename legacy file to geocontext.json">Promote</button>
@@ -190,7 +218,7 @@
       {summary.warns} {summary.warns === 1 ? 'warning' : 'warnings'}
     </span>
     <span class="version mono">
-      {#if !tauri}browser preview · {/if}geocontext-editor / 0.3.0
+      {#if !tauri}browser preview · {/if}geocontext-editor / 0.4.0
     </span>
   </footer>
 </div>

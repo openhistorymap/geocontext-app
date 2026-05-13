@@ -5,8 +5,11 @@ use serde::Serialize;
 use thiserror::Error;
 
 mod import;
+mod workspaces;
 
 use import::{AssetKind, ImportError, ImportedAsset, PrjInfo, RepoAsset};
+use tauri::Manager;
+use workspaces::WorkspaceEntry;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -220,6 +223,50 @@ fn delete_repo_asset(folder: String, rel_path: String) -> CmdResult<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Workspaces (recent / pinned repositories)
+
+fn config_dir(app: &tauri::AppHandle) -> Result<PathBuf, AppErrorRepr> {
+    app.path()
+        .app_config_dir()
+        .map_err(|e| AppErrorRepr(format!("could not resolve app config dir: {e}")))
+}
+
+#[tauri::command]
+fn list_workspaces(app: tauri::AppHandle) -> CmdResult<Vec<WorkspaceEntry>> {
+    let dir = config_dir(&app)?;
+    let list = workspaces::load(&dir).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
+    Ok(workspaces::annotate(list))
+}
+
+#[tauri::command]
+fn touch_workspace(
+    app: tauri::AppHandle,
+    path: String,
+    title: Option<String>,
+    filename: Option<String>,
+) -> CmdResult<Vec<WorkspaceEntry>> {
+    let dir = config_dir(&app)?;
+    let list = workspaces::touch(&dir, path, title, filename)
+        .map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
+    Ok(workspaces::annotate(list))
+}
+
+#[tauri::command]
+fn remove_workspace(app: tauri::AppHandle, path: String) -> CmdResult<Vec<WorkspaceEntry>> {
+    let dir = config_dir(&app)?;
+    let list = workspaces::remove(&dir, &path).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
+    Ok(workspaces::annotate(list))
+}
+
+#[tauri::command]
+fn forget_unreachable_workspaces(app: tauri::AppHandle) -> CmdResult<Vec<WorkspaceEntry>> {
+    let dir = config_dir(&app)?;
+    let list =
+        workspaces::forget_unreachable(&dir).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
+    Ok(workspaces::annotate(list))
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension(format!(
         "{}.tmp",
@@ -245,6 +292,10 @@ pub fn run() {
             import_shp_local,
             import_asset_local,
             delete_repo_asset,
+            list_workspaces,
+            touch_workspace,
+            remove_workspace,
+            forget_unreachable_workspaces,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
