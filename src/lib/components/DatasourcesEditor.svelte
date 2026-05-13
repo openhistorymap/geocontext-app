@@ -3,14 +3,122 @@
   import { newDatasource, newCsvColumn } from '$lib/types';
   import type { Issue } from '$lib/validate';
   import { issuesByPath } from '$lib/issuesByPath';
+  import {
+    isTauri,
+    pickLocalFile,
+    detectShpCrs,
+    importGeojsonLocal,
+    importShpLocal,
+    type PrjInfo
+  } from '$lib/tauri';
 
   let {
     datasources = $bindable(),
-    issues
-  }: { datasources: Datasource[]; issues: Issue[] } = $props();
+    issues,
+    folder
+  }: { datasources: Datasource[]; issues: Issue[]; folder: string | null } = $props();
 
   let pathIssues = $derived(issuesByPath(issues));
   let selected = $state<number>(0);
+
+  // ── Import flow state ──
+  type ImportKind = 'geojson' | 'shp' | null;
+  let importOpen = $state(false);
+  let importSrc = $state<string>('');
+  let importKind = $state<ImportKind>(null);
+  let importName = $state<string>('');
+  let importEpsg = $state<number>(4326);
+  let importDetected = $state<PrjInfo | null>(null);
+  let importBusy = $state(false);
+  let importError = $state<string | null>(null);
+
+  // Common CRS shortcuts familiar to digital-humanities users
+  const CRS_SHORTCUTS: { code: number; label: string }[] = [
+    { code: 4326, label: '4326 — WGS 84 (lat/lon)' },
+    { code: 3857, label: '3857 — Web Mercator' },
+    { code: 3003, label: '3003 — Monte Mario / Italy zone 1' },
+    { code: 3004, label: '3004 — Monte Mario / Italy zone 2' },
+    { code: 25832, label: '25832 — ETRS89 / UTM 32N' },
+    { code: 25833, label: '25833 — ETRS89 / UTM 33N' },
+    { code: 32632, label: '32632 — WGS 84 / UTM 32N' },
+    { code: 32633, label: '32633 — WGS 84 / UTM 33N' },
+    { code: 27700, label: '27700 — OSGB 1936 / British National Grid' },
+    { code: 2154,  label: '2154  — RGF93 / Lambert-93 (France)' },
+    { code: 31370, label: '31370 — Belgian Lambert 72' }
+  ];
+
+  function basename(p: string): string {
+    return p.split(/[\\/]/).pop() ?? p;
+  }
+  function stem(p: string): string {
+    return basename(p).replace(/\.[^.]+$/, '');
+  }
+  function ext(p: string): string {
+    const m = basename(p).match(/\.([^.]+)$/);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function resetImport() {
+    importOpen = false;
+    importSrc = '';
+    importKind = null;
+    importName = '';
+    importEpsg = 4326;
+    importDetected = null;
+    importBusy = false;
+    importError = null;
+  }
+
+  async function chooseImportFile() {
+    importError = null;
+    const path = await pickLocalFile([
+      { name: 'GeoJSON or Shapefile', extensions: ['geojson', 'json', 'shp'] }
+    ]);
+    if (!path) return;
+    importSrc = path;
+    importName = stem(path);
+    const e = ext(path);
+    importKind = e === 'shp' ? 'shp' : 'geojson';
+    importDetected = null;
+    if (importKind === 'shp') {
+      try {
+        const detected = await detectShpCrs(path);
+        importDetected = detected;
+        if (detected.epsg) importEpsg = detected.epsg;
+      } catch (err) {
+        importError = `Could not read .prj: ${(err as Error).message}`;
+      }
+    }
+  }
+
+  async function runImport() {
+    if (!folder) { importError = 'Open a repository folder first.'; return; }
+    if (!importSrc) { importError = 'Pick a file first.'; return; }
+    importBusy = true;
+    importError = null;
+    try {
+      const safeName = importName || stem(importSrc) || `dataset_${datasources.length + 1}`;
+      const result =
+        importKind === 'shp'
+          ? await importShpLocal(folder, importSrc, importEpsg, safeName)
+          : await importGeojsonLocal(folder, importSrc, safeName);
+
+      // Append a geojson+http+remote datasource pointing at the new file.
+      const ds: Datasource = {
+        name: safeName,
+        type: 'geojson+http+remote',
+        conf: { source: result.rel_path }
+      };
+      datasources.push(ds);
+      datasources = datasources;
+      selected = datasources.length - 1;
+      resetImport();
+    } catch (e) {
+      importError = (e as Error).message;
+    } finally {
+      importBusy = false;
+    }
+  }
 
   function add() {
     datasources.push(newDatasource(`ds_${datasources.length + 1}`));
@@ -71,8 +179,69 @@
   <aside class="dse__rail">
     <div class="section__head" style="padding-block: var(--s-1) var(--s-3);">
       <span class="section__title">Datasources</span>
-      <button class="btn" onclick={add}>+ Add</button>
+      <div class="row" style="gap: var(--s-3);">
+        <button class="btn" onclick={() => { importOpen = !importOpen; if (importOpen) chooseImportFile(); }} disabled={!folder || !isTauri()}>
+          Import…
+        </button>
+        <button class="btn" onclick={add}>+ Add</button>
+      </div>
     </div>
+
+    {#if importOpen}
+      <div class="dse__import">
+        <div class="row spread" style="margin-bottom: var(--s-2);">
+          <span class="label" style="margin: 0;">Import a local dataset</span>
+          <button class="btn btn--icon" title="cancel" onclick={resetImport}>✕</button>
+        </div>
+
+        {#if !importSrc}
+          <p class="meta">A file picker should open. <button class="btn" onclick={chooseImportFile}>Choose file…</button></p>
+        {:else}
+          <p class="mono" style="font-size: var(--t-xs); word-break: break-all;">{importSrc}</p>
+
+          {#if importKind === 'shp'}
+            {#if importDetected?.prj_present === false}
+              <p class="warn meta">No .prj sibling found — pick the source CRS manually.</p>
+            {:else if importDetected?.epsg}
+              <p class="meta">Detected: <span class="mono">EPSG:{importDetected.epsg}</span>
+                {#if importDetected.name} — {importDetected.name}{/if}
+              </p>
+            {:else if importDetected}
+              <p class="warn meta">.prj present but no EPSG identified — pick from the list or paste the code.</p>
+            {/if}
+
+            <label class="field" style="margin-top: var(--s-2);">
+              <span class="label">Source CRS — shortcut</span>
+              <select
+                value={importEpsg}
+                onchange={(e) => (importEpsg = +(e.currentTarget as HTMLSelectElement).value)}>
+                {#each CRS_SHORTCUTS as s (s.code)}
+                  <option value={s.code}>{s.label}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="field">
+              <span class="label">Source EPSG (override)</span>
+              <input type="number" min="1024" max="999999" bind:value={importEpsg} />
+            </label>
+          {/if}
+
+          <label class="field">
+            <span class="label">Target name — datasets/&lt;name&gt;.geojson</span>
+            <input type="text" bind:value={importName} />
+          </label>
+
+          {#if importError}<span class="error">{importError}</span>{/if}
+
+          <div class="row spread" style="margin-top: var(--s-3);">
+            <button class="btn" onclick={resetImport} disabled={importBusy}>Cancel</button>
+            <button class="btn btn--primary" onclick={runImport} disabled={importBusy || !importSrc}>
+              {importBusy ? 'Importing…' : (importKind === 'shp' ? 'Convert & add' : 'Copy & add')}
+            </button>
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#if datasources.length === 0}
       <p class="meta" style="padding-block: var(--s-3); border-top: var(--hairline) solid var(--rule);">
         Nothing yet — a datasource defines where features are fetched from.
@@ -225,5 +394,14 @@
   }
   .dse__editor {
     min-width: 0;
+  }
+  .dse__import {
+    border: var(--hairline) solid var(--rule);
+    background: var(--bg-raised);
+    padding: var(--s-3);
+    margin-bottom: var(--s-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
   }
 </style>

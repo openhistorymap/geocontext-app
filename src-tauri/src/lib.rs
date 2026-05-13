@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use thiserror::Error;
 
+mod import;
+
+use import::{AssetKind, ImportError, ImportedAsset, PrjInfo, RepoAsset};
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("io error: {0}")]
@@ -18,6 +22,8 @@ pub enum AppError {
     InvalidFilename(String),
     #[error("file already contains a different geocontext file: {0}")]
     AlreadyExists(String),
+    #[error("import: {0}")]
+    Import(#[from] ImportError),
 }
 
 impl serde::Serialize for AppErrorRepr {
@@ -31,6 +37,12 @@ pub struct AppErrorRepr(String);
 
 impl From<AppError> for AppErrorRepr {
     fn from(e: AppError) -> Self {
+        AppErrorRepr(e.to_string())
+    }
+}
+
+impl From<ImportError> for AppErrorRepr {
+    fn from(e: ImportError) -> Self {
         AppErrorRepr(e.to_string())
     }
 }
@@ -62,7 +74,6 @@ fn load_geocontext(folder: String) -> CmdResult<LoadedGeoContext> {
         if p.is_file() {
             let content =
                 fs::read_to_string(&p).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
-            // Validate JSON now so the frontend can rely on it
             let _: serde_json::Value = serde_json::from_str(&content)
                 .map_err(|e| AppErrorRepr::from(AppError::Json(e)))?;
             return Ok(LoadedGeoContext {
@@ -106,7 +117,6 @@ fn create_geocontext_repo(folder: String, filename: String, content: String) -> 
         serde_json::from_str(&content).map_err(|e| AppErrorRepr::from(AppError::Json(e)))?;
     atomic_write(&dir.join(&filename), content.as_bytes())
         .map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
-    // Seed an empty datasets/ so paths in §9 have a home
     let datasets = dir.join("datasets");
     if !datasets.exists() {
         fs::create_dir_all(&datasets).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
@@ -117,30 +127,96 @@ fn create_geocontext_repo(folder: String, filename: String, content: String) -> 
 #[tauri::command]
 fn list_assets(folder: String) -> CmdResult<Vec<String>> {
     let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
-    let mut out = Vec::new();
-    walk(&dir, &dir, &mut out).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
+    let mut out: Vec<String> = import::list_assets_recursive(&dir)
+        .map_err(|e| AppErrorRepr::from(AppError::Io(e)))?
+        .into_iter()
+        .map(|a| a.rel_path)
+        .collect();
     out.sort();
     Ok(out)
 }
 
-fn walk(root: &Path, cur: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
-    // Cap traversal so we don't list .git etc.
-    let name = cur.file_name().and_then(|s| s.to_str()).unwrap_or("");
-    if matches!(
-        name,
-        ".git" | "node_modules" | ".svelte-kit" | "build" | "dist" | "target"
-    ) {
-        return Ok(());
+#[tauri::command]
+fn list_repo_assets(folder: String) -> CmdResult<Vec<RepoAsset>> {
+    let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
+    import::list_assets_recursive(&dir).map_err(|e| AppErrorRepr::from(AppError::Io(e)))
+}
+
+#[tauri::command]
+fn detect_shp_crs(shp_path: String) -> CmdResult<PrjInfo> {
+    let p = PathBuf::from(shp_path);
+    import::read_prj_for(&p).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn import_geojson_local(
+    folder: String,
+    src_path: String,
+    name_override: Option<String>,
+) -> CmdResult<ImportedAsset> {
+    let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
+    let src = PathBuf::from(src_path);
+    Ok(import::import_geojson_into(
+        &dir,
+        &src,
+        name_override.as_deref(),
+    )?)
+}
+
+#[tauri::command]
+fn import_shp_local(
+    folder: String,
+    src_path: String,
+    source_epsg: u32,
+    name_override: Option<String>,
+) -> CmdResult<ImportedAsset> {
+    let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
+    let src = PathBuf::from(src_path);
+    Ok(import::import_shp_into(
+        &dir,
+        &src,
+        source_epsg,
+        name_override.as_deref(),
+    )?)
+}
+
+#[tauri::command]
+fn import_asset_local(
+    folder: String,
+    src_path: String,
+    kind: String,
+    name_override: Option<String>,
+) -> CmdResult<ImportedAsset> {
+    let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
+    let src = PathBuf::from(src_path);
+    let k = AssetKind::from_kind_str(&kind);
+    Ok(import::import_asset_into(
+        &dir,
+        &src,
+        k,
+        name_override.as_deref(),
+    )?)
+}
+
+#[tauri::command]
+fn delete_repo_asset(folder: String, rel_path: String) -> CmdResult<()> {
+    if rel_path.is_empty() || rel_path.contains("..") {
+        return Err(AppErrorRepr::from(AppError::Import(
+            ImportError::PathEscape(rel_path),
+        )));
     }
-    for entry in fs::read_dir(cur)? {
-        let entry = entry?;
-        let p = entry.path();
-        if p.is_dir() {
-            walk(root, &p, out)?;
-        } else if let Ok(rel) = p.strip_prefix(root) {
-            out.push(rel.to_string_lossy().into_owned());
-        }
+    // Refuse to delete the geocontext file itself.
+    if rel_path == "geocontext.json" || rel_path == "gcx.json" {
+        return Err(AppErrorRepr::from(AppError::Import(ImportError::Other(
+            "refusing to delete the geocontext file via the asset browser".into(),
+        ))));
     }
+    let dir = ensure_dir(&folder).map_err(AppErrorRepr::from)?;
+    let target = import::resolve_inside(&dir, &rel_path).map_err(AppErrorRepr::from)?;
+    if !target.exists() {
+        return Err(AppErrorRepr::from(AppError::NotFound(rel_path)));
+    }
+    fs::remove_file(&target).map_err(|e| AppErrorRepr::from(AppError::Io(e)))?;
     Ok(())
 }
 
@@ -163,6 +239,12 @@ pub fn run() {
             save_geocontext,
             create_geocontext_repo,
             list_assets,
+            list_repo_assets,
+            detect_shp_crs,
+            import_geojson_local,
+            import_shp_local,
+            import_asset_local,
+            delete_repo_asset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@
   import LayersEditor from '$lib/components/LayersEditor.svelte';
   import MapPreview from '$lib/components/MapPreview.svelte';
   import JsonView from '$lib/components/JsonView.svelte';
+  import AssetsBrowser from '$lib/components/AssetsBrowser.svelte';
   import { validate, summarize } from '$lib/validate';
   import { emptyGeoContext, type GeoContext } from '$lib/types';
   import {
@@ -15,7 +16,7 @@
   } from '$lib/tauri';
   import type { RepoCoords } from '$lib/assetPath';
 
-  type Tab = 'general' | 'datasources' | 'layers' | 'json';
+  type Tab = 'general' | 'datasources' | 'layers' | 'assets' | 'json';
   let tab = $state<Tab>('general');
 
   // Single source of truth — children mutate via $bindable
@@ -151,6 +152,9 @@
     <button class="tab" class:is-active={tab === 'layers'} onclick={() => (tab = 'layers')}>
       Layers <span class="tab__count">{fmtCount(working.layers?.length ?? 0)}</span>
     </button>
+    <button class="tab" class:is-active={tab === 'assets'} onclick={() => (tab = 'assets')}>
+      Assets
+    </button>
     <button class="tab" class:is-active={tab === 'json'} onclick={() => (tab = 'json')}>
       Source
     </button>
@@ -161,9 +165,11 @@
       {#if tab === 'general'}
         <TopLevelForm bind:model={working} {issues} />
       {:else if tab === 'datasources'}
-        <DatasourcesEditor bind:datasources={working.datasources} {issues} />
+        <DatasourcesEditor bind:datasources={working.datasources} {issues} folder={opened?.folder ?? null} />
       {:else if tab === 'layers'}
         <LayersEditor bind:layers={working.layers} datasources={working.datasources} {issues} />
+      {:else if tab === 'assets'}
+        <AssetsBrowser folder={opened?.folder ?? null} model={working} />
       {:else}
         <JsonView bind:model={working} />
       {/if}
@@ -184,7 +190,7 @@
       {summary.warns} {summary.warns === 1 ? 'warning' : 'warnings'}
     </span>
     <span class="version mono">
-      {#if !tauri}browser preview · {/if}geocontext-editor / 0.2.0
+      {#if !tauri}browser preview · {/if}geocontext-editor / 0.3.0
     </span>
   </footer>
 </div>
