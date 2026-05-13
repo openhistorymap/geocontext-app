@@ -12,12 +12,14 @@
     activePath,
     onpick,
     onnew,
-    onopenfolder
+    onopenfolder,
+    onclone
   }: {
     activePath: string | null;
     onpick: (entry: WorkspaceEntry) => void | Promise<void>;
     onnew: () => void | Promise<void>;
     onopenfolder: () => void | Promise<void>;
+    onclone: () => void | Promise<void>;
   } = $props();
 
   let open = $state(false);
@@ -79,6 +81,11 @@
     await onopenfolder();
   }
 
+  async function cloneRepo() {
+    close();
+    await onclone();
+  }
+
   async function removeOne(e: Event, entry: WorkspaceEntry) {
     e.stopPropagation();
     if (!confirm(`Remove ${entry.path} from the workspace list? (does not delete the folder)`)) return;
@@ -138,6 +145,7 @@
     <div bind:this={panel} class="wsm__panel" role="menu">
       <div class="wsm__actions">
         <button class="btn" onclick={openFolder} disabled={!isTauri()}>Open folder…</button>
+        <button class="btn" onclick={cloneRepo} disabled={!isTauri()}>Clone from GitHub…</button>
         <button class="btn" onclick={newRepo} disabled={!isTauri()}>New repository…</button>
       </div>
 

@@ -166,3 +166,132 @@ export async function removeWorkspace(path: string): Promise<WorkspaceEntry[]> {
 export async function forgetUnreachableWorkspaces(): Promise<WorkspaceEntry[]> {
   return await invoke<WorkspaceEntry[]>('forget_unreachable_workspaces');
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Git + GitHub
+
+export interface GitStatus {
+  is_repo: boolean;
+  branch: string | null;
+  remote: string | null;
+  remote_url: string | null;
+  ahead: number;
+  behind: number;
+  dirty: number;
+  head_sha: string | null;
+}
+
+export interface CloneResult {
+  folder: string;
+  default_branch: string | null;
+}
+
+export async function gitStatus(folder: string): Promise<GitStatus> {
+  return await invoke<GitStatus>('git_status', { folder });
+}
+
+export async function gitClone(url: string, dest: string): Promise<CloneResult> {
+  return await invoke<CloneResult>('git_clone', { url, dest });
+}
+
+export async function gitPull(folder: string): Promise<GitStatus> {
+  return await invoke<GitStatus>('git_pull', { folder });
+}
+
+export async function gitSync(
+  folder: string,
+  message: string,
+  name?: string | null,
+  email?: string | null
+): Promise<GitStatus> {
+  return await invoke<GitStatus>('git_sync', {
+    folder,
+    message,
+    name: name ?? null,
+    email: email ?? null
+  });
+}
+
+export async function gitInitWithOrigin(folder: string, originUrl: string): Promise<void> {
+  await invoke('git_init_with_origin', { folder, originUrl });
+}
+
+export interface AuthState {
+  has_token: boolean;
+  oauth_available: boolean;
+}
+export async function authState(): Promise<AuthState> {
+  if (!isTauri()) return { has_token: false, oauth_available: false };
+  return await invoke<AuthState>('auth_state');
+}
+export async function authSetToken(token: string): Promise<void> {
+  await invoke('auth_set_token', { token });
+}
+export async function authClearToken(): Promise<void> {
+  await invoke('auth_clear_token');
+}
+export async function authPatUrl(): Promise<string> {
+  return await invoke<string>('auth_pat_url');
+}
+
+export interface DeviceFlowStart {
+  user_code: string;
+  device_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+export async function githubOauthStart(): Promise<DeviceFlowStart> {
+  return await invoke<DeviceFlowStart>('github_oauth_start');
+}
+
+export type PollResult =
+  | { kind: 'pending' }
+  | { kind: 'slow_down'; interval: number }
+  | { kind: 'token'; access_token: string; scope: string | null }
+  | { kind: 'denied' }
+  | { kind: 'expired' }
+  | { kind: 'error'; message: string };
+
+export async function githubOauthPoll(deviceCode: string): Promise<PollResult> {
+  return await invoke<PollResult>('github_oauth_poll', { deviceCode });
+}
+
+export interface WhoAmI {
+  login: string;
+  name: string | null;
+  avatar_url: string | null;
+  scopes: string[];
+}
+export async function githubWhoami(): Promise<WhoAmI | null> {
+  return await invoke<WhoAmI | null>('github_whoami');
+}
+
+export interface CreatedRepo {
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
+  full_name: string;
+}
+export async function githubCreateRepo(
+  name: string,
+  description: string | null,
+  isPrivate: boolean,
+  ownerOrg: string | null
+): Promise<CreatedRepo> {
+  return await invoke<CreatedRepo>('github_create_repo', {
+    name,
+    description,
+    isPrivate,
+    ownerOrg
+  });
+}
+
+/// Open a URL in the user's default browser via the Tauri opener plugin
+/// when available, otherwise via `window.open`.
+export async function openExternal(url: string): Promise<void> {
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank');
+  }
+}

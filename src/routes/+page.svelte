@@ -6,6 +6,10 @@
   import JsonView from '$lib/components/JsonView.svelte';
   import AssetsBrowser from '$lib/components/AssetsBrowser.svelte';
   import WorkspaceMenu from '$lib/components/WorkspaceMenu.svelte';
+  import AccountMenu from '$lib/components/AccountMenu.svelte';
+  import GitPanel from '$lib/components/GitPanel.svelte';
+  import CloneDialog from '$lib/components/CloneDialog.svelte';
+  import { onMount } from 'svelte';
   import { validate, summarize } from '$lib/validate';
   import { emptyGeoContext, type GeoContext } from '$lib/types';
   import {
@@ -15,7 +19,10 @@
     saveGeoContext,
     createGeoContextRepo,
     touchWorkspace,
-    type WorkspaceEntry
+    authState,
+    type WorkspaceEntry,
+    type CloneResult,
+    type GitStatus
   } from '$lib/tauri';
   import type { RepoCoords } from '$lib/assetPath';
 
@@ -49,6 +56,16 @@
   }
 
   let menu = $state<WorkspaceMenu | undefined>(undefined);
+  let cloneOpen = $state(false);
+  let hasToken = $state(false);
+
+  async function refreshAuth() {
+    if (!isTauri()) { hasToken = false; return; }
+    try { hasToken = (await authState()).has_token; }
+    catch { hasToken = false; }
+  }
+
+  onMount(() => { refreshAuth(); });
 
   function confirmDiscardIfDirty(): boolean {
     if (!dirty) return true;
@@ -98,6 +115,23 @@
     if (!confirmDiscardIfDirty()) return;
     try { await loadFolder(entry.path); }
     catch (e) { alert(`Failed to switch: ${(e as Error).message}`); }
+  }
+
+  function openClone() {
+    cloneOpen = true;
+  }
+
+  async function afterClone(result: CloneResult) {
+    if (!confirmDiscardIfDirty()) return;
+    try {
+      await loadFolder(result.folder);
+    } catch (e) {
+      alert(`Cloned but couldn't load: ${(e as Error).message}`);
+    }
+  }
+
+  async function afterSynced(_status: GitStatus) {
+    // No-op for now; the GitPanel manages its own refresh.
   }
 
   async function save() {
@@ -154,6 +188,7 @@
         onpick={switchTo}
         onnew={newRepo}
         onopenfolder={openRepo}
+        onclone={openClone}
       />
       {#if opened}
         <span class="path mono" title={`${opened.folder}/${opened.filename}`}>{shortPath(`${opened.folder}/${opened.filename}`)}</span>
@@ -162,6 +197,7 @@
     </div>
 
     <div class="plate__actions">
+      <AccountMenu onchange={refreshAuth} />
       <button class="btn" onclick={resetModel}>Reset</button>
       {#if opened?.filename === 'gcx.json'}
         <button class="btn" onclick={saveAsGeoContext} title="rename legacy file to geocontext.json">Promote</button>
@@ -169,6 +205,17 @@
       <button class="btn btn--primary" onclick={save} disabled={!opened || !tauri}>Save</button>
     </div>
   </header>
+
+  {#if opened && tauri}
+    <div class="plate__git">
+      <GitPanel
+        folder={opened.folder}
+        title={working.title}
+        {hasToken}
+        onsynced={afterSynced}
+      />
+    </div>
+  {/if}
 
   <nav class="plate__tabs" aria-label="editor sections">
     <button class="tab" class:is-active={tab === 'general'} onclick={() => (tab = 'general')}>
@@ -208,6 +255,10 @@
     </section>
   </main>
 
+  {#if cloneOpen}
+    <CloneDialog onclose={() => (cloneOpen = false)} oncloned={afterClone} />
+  {/if}
+
   <footer class="plate__footer">
     <span class="stats">
       {fmtCount(working.layers?.length ?? 0)} layers · {fmtCount(working.datasources?.length ?? 0)} sources
@@ -218,7 +269,7 @@
       {summary.warns} {summary.warns === 1 ? 'warning' : 'warnings'}
     </span>
     <span class="version mono">
-      {#if !tauri}browser preview · {/if}geocontext-editor / 0.4.0
+      {#if !tauri}browser preview · {/if}geocontext-editor / 0.5.0
     </span>
   </footer>
 </div>

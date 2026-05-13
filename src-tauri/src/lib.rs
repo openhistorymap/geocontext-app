@@ -4,9 +4,11 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use thiserror::Error;
 
+mod git;
 mod import;
 mod workspaces;
 
+use git::{CloneResult, CreatedRepo, DeviceFlowStart, GitError, PollResult, StatusResult, WhoAmI};
 use import::{AssetKind, ImportError, ImportedAsset, PrjInfo, RepoAsset};
 use tauri::Manager;
 use workspaces::WorkspaceEntry;
@@ -27,6 +29,8 @@ pub enum AppError {
     AlreadyExists(String),
     #[error("import: {0}")]
     Import(#[from] ImportError),
+    #[error("git: {0}")]
+    Git(#[from] GitError),
 }
 
 impl serde::Serialize for AppErrorRepr {
@@ -46,6 +50,12 @@ impl From<AppError> for AppErrorRepr {
 
 impl From<ImportError> for AppErrorRepr {
     fn from(e: ImportError) -> Self {
+        AppErrorRepr(e.to_string())
+    }
+}
+
+impl From<GitError> for AppErrorRepr {
+    fn from(e: GitError) -> Self {
         AppErrorRepr(e.to_string())
     }
 }
@@ -267,6 +277,119 @@ fn forget_unreachable_workspaces(app: tauri::AppHandle) -> CmdResult<Vec<Workspa
     Ok(workspaces::annotate(list))
 }
 
+// ---------------------------------------------------------------------------
+// Git + GitHub
+
+#[tauri::command]
+fn git_status(folder: String) -> CmdResult<StatusResult> {
+    git::status(&PathBuf::from(folder)).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn git_clone(url: String, dest: String) -> CmdResult<CloneResult> {
+    let token = git::load_token().map_err(AppErrorRepr::from)?;
+    let canonical = git::normalise_github_url(&url);
+    let dest_path = PathBuf::from(dest);
+    git::clone(&canonical, &dest_path, token).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn git_pull(folder: String) -> CmdResult<StatusResult> {
+    let token = git::load_token().map_err(AppErrorRepr::from)?;
+    git::pull(&PathBuf::from(folder), token).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn git_sync(
+    folder: String,
+    message: String,
+    name: Option<String>,
+    email: Option<String>,
+) -> CmdResult<StatusResult> {
+    let token = git::load_token().map_err(AppErrorRepr::from)?;
+    git::sync(
+        &PathBuf::from(folder),
+        &message,
+        name.as_deref(),
+        email.as_deref(),
+        token,
+    )
+    .map_err(AppErrorRepr::from)
+}
+
+#[derive(serde::Serialize)]
+struct AuthState {
+    has_token: bool,
+    oauth_available: bool,
+}
+
+#[tauri::command]
+fn auth_state() -> CmdResult<AuthState> {
+    let has_token = git::load_token().map_err(AppErrorRepr::from)?.is_some();
+    Ok(AuthState {
+        has_token,
+        oauth_available: git::oauth_client_id().is_some(),
+    })
+}
+
+#[tauri::command]
+fn auth_set_token(token: String) -> CmdResult<()> {
+    git::store_token(&token).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn auth_clear_token() -> CmdResult<()> {
+    git::clear_token().map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn auth_pat_url() -> CmdResult<String> {
+    Ok(git::pat_create_url())
+}
+
+#[tauri::command]
+fn github_oauth_start() -> CmdResult<DeviceFlowStart> {
+    git::oauth_start().map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn github_oauth_poll(device_code: String) -> CmdResult<PollResult> {
+    git::oauth_poll(&device_code).map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn github_whoami() -> CmdResult<Option<WhoAmI>> {
+    match git::load_token().map_err(AppErrorRepr::from)? {
+        None => Ok(None),
+        Some(token) => Ok(Some(git::whoami(&token).map_err(AppErrorRepr::from)?)),
+    }
+}
+
+#[tauri::command]
+fn github_create_repo(
+    name: String,
+    description: Option<String>,
+    is_private: bool,
+    owner_org: Option<String>,
+) -> CmdResult<CreatedRepo> {
+    let token = git::load_token()
+        .map_err(AppErrorRepr::from)?
+        .ok_or_else(|| AppErrorRepr("not signed in to GitHub".into()))?;
+    git::create_repo(
+        &token,
+        &name,
+        description.as_deref(),
+        is_private,
+        owner_org.as_deref(),
+    )
+    .map_err(AppErrorRepr::from)
+}
+
+#[tauri::command]
+fn git_init_with_origin(folder: String, origin_url: String) -> CmdResult<()> {
+    git::ensure_repo_with_origin(&PathBuf::from(folder), &origin_url).map_err(AppErrorRepr::from)
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension(format!(
         "{}.tmp",
@@ -296,6 +419,19 @@ pub fn run() {
             touch_workspace,
             remove_workspace,
             forget_unreachable_workspaces,
+            git_status,
+            git_clone,
+            git_pull,
+            git_sync,
+            git_init_with_origin,
+            auth_state,
+            auth_set_token,
+            auth_clear_token,
+            auth_pat_url,
+            github_oauth_start,
+            github_oauth_poll,
+            github_whoami,
+            github_create_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
