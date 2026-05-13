@@ -25,7 +25,10 @@
   function changeType(ds: Datasource, t: string) {
     ds.type = t;
     if (t === 'geojson' || t === 'csv') {
-      ds.conf = { ...ds.conf, data: ds.conf?.data ?? (t === 'geojson' ? { type: 'FeatureCollection', features: [] } : '') };
+      ds.conf = {
+        ...ds.conf,
+        data: ds.conf?.data ?? (t === 'geojson' ? { type: 'FeatureCollection', features: [] } : '')
+      };
       delete ds.conf.source;
     } else {
       ds.conf = { ...ds.conf, source: ds.conf?.source ?? '' };
@@ -50,11 +53,8 @@
     cols.splice(i, 1);
     datasources = datasources;
   }
-
   function toggleTag(col: CsvColumn, tag: string) {
-    const has = col.tags.includes(tag);
-    if (has) col.tags = col.tags.filter((t) => t !== tag);
-    else col.tags = [...col.tags, tag];
+    col.tags = col.tags.includes(tag) ? col.tags.filter((t) => t !== tag) : [...col.tags, tag];
     datasources = datasources;
   }
 
@@ -64,112 +64,143 @@
     const list = pathIssues.get(`${dsPath}.${rel}`);
     return list?.length ? list.map((i) => i.message).join('; ') : null;
   }
+  function pad(n: number): string { return n.toString().padStart(3, '0'); }
 </script>
 
-<div class="row" style="gap: 12px; align-items: stretch; height: 100%;">
-  <!-- list -->
-  <div class="card col" style="width: 220px; max-height: 100%; overflow: auto;">
-    <div class="row" style="justify-content: space-between;">
-      <strong>Datasources</strong>
-      <button onclick={add}>+ add</button>
+<div class="dse">
+  <aside class="dse__rail">
+    <div class="section__head" style="padding-block: var(--s-1) var(--s-3);">
+      <span class="section__title">Datasources</span>
+      <button class="btn" onclick={add}>+ Add</button>
     </div>
     {#if datasources.length === 0}
-      <div class="muted">No datasources yet.</div>
-    {/if}
-    {#each datasources as d, i (i)}
-      <div class="row" style="gap: 4px;">
-        <button class:primary={selected === i} style="flex: 1; text-align: left;" onclick={() => (selected = i)}>
-          {d.name || '(unnamed)'}
-          <div class="muted">{d.type}</div>
-        </button>
-        <button class="danger" title="remove" onclick={() => remove(i)}>×</button>
-      </div>
-    {/each}
-  </div>
-
-  <!-- editor -->
-  <div class="card col" style="flex: 1; overflow: auto;">
-    {#if !ds}
-      <div class="muted">Select or add a datasource.</div>
+      <p class="meta" style="padding-block: var(--s-3); border-top: var(--hairline) solid var(--rule);">
+        Nothing yet — a datasource defines where features are fetched from.
+      </p>
     {:else}
-      <div class="row" style="gap: 12px;">
-        <label class="field" style="flex: 1;">name
-          <input type="text" bind:value={ds.name} oninput={() => (datasources = datasources)} />
+      <div class="rail">
+        {#each datasources as d, i (i)}
+          <div class="rail__row" class:is-current={selected === i}>
+            <button class="rail__item" onclick={() => (selected = i)}>
+              <span class="rail__idx">{pad(i + 1)}</span>
+              <span class="rail__name">
+                <span class="primary">{d.name || '(unnamed)'}</span>
+                <span class="secondary">{d.type}</span>
+              </span>
+            </button>
+            <span class="rail__ctrls">
+              <button class="btn btn--icon" title="remove" onclick={() => remove(i)}>✕</button>
+            </span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </aside>
+
+  <div class="dse__editor">
+    {#if !ds}
+      <p class="meta">Select or add a datasource on the left.</p>
+    {:else}
+      <div class="row wrap" style="gap: var(--s-5);">
+        <label class="field" style="flex: 1; min-width: 200px;">
+          <span class="label">Name</span>
+          <input
+            type="text"
+            bind:value={ds.name}
+            oninput={() => (datasources = datasources)} />
           {#if err('name')}<span class="error">{err('name')}</span>{/if}
         </label>
-        <label class="field" style="flex: 1;">type
-          <select value={ds.type} onchange={(e) => changeType(ds, (e.currentTarget as HTMLSelectElement).value)}>
-            <option value="geojson">geojson (inline)</option>
+        <label class="field" style="flex: 1; min-width: 220px;">
+          <span class="label">Type</span>
+          <select
+            value={ds.type}
+            onchange={(e) => changeType(ds, (e.currentTarget as HTMLSelectElement).value)}>
+            <option value="geojson">geojson — inline</option>
             <option value="geojson+http+remote">geojson+http+remote</option>
-            <option value="csv">csv (inline)</option>
+            <option value="csv">csv — inline</option>
             <option value="csv+http+remote">csv+http+remote</option>
           </select>
         </label>
       </div>
 
       {#if ds.type === 'geojson+http+remote' || ds.type === 'csv+http+remote'}
-        <label class="field">conf.source
-          <input type="text" placeholder="datasets/x.geojson  or  https://…"
-                 value={ds.conf.source ?? ''}
-                 oninput={(e) => { ds.conf.source = (e.currentTarget as HTMLInputElement).value; datasources = datasources; }} />
+        <label class="field" style="margin-top: var(--s-4);">
+          <span class="label">conf.source</span>
+          <input
+            type="text"
+            placeholder="datasets/x.geojson  or  https://…"
+            value={ds.conf.source ?? ''}
+            oninput={(e) => { ds.conf.source = (e.currentTarget as HTMLInputElement).value; datasources = datasources; }} />
           {#if err('conf.source')}<span class="error">{err('conf.source')}</span>{/if}
-          <span class="muted">Bare-relative paths resolve against the repo on jsDelivr (§9).</span>
+          <span class="meta">Bare-relative paths resolve against the repo on jsDelivr (§9).</span>
         </label>
       {/if}
 
       {#if ds.type === 'geojson'}
-        <label class="field">conf.data (inline FeatureCollection JSON)
-          <textarea rows="10"
-                    value={JSON.stringify(ds.conf.data ?? { type: 'FeatureCollection', features: [] }, null, 2)}
-                    onchange={(e) => {
-                      try { ds.conf.data = JSON.parse((e.currentTarget as HTMLTextAreaElement).value); datasources = datasources; }
-                      catch { /* leave previous value */ }
-                    }}></textarea>
+        <label class="field" style="margin-top: var(--s-4);">
+          <span class="label">conf.data — FeatureCollection</span>
+          <textarea
+            rows="10"
+            value={JSON.stringify(ds.conf.data ?? { type: 'FeatureCollection', features: [] }, null, 2)}
+            onchange={(e) => {
+              try { ds.conf.data = JSON.parse((e.currentTarget as HTMLTextAreaElement).value); datasources = datasources; }
+              catch {}
+            }}></textarea>
           {#if err('conf.data')}<span class="error">{err('conf.data')}</span>{/if}
         </label>
       {/if}
 
       {#if ds.type === 'csv'}
-        <label class="field">conf.data (raw CSV)
-          <textarea rows="8"
-                    value={typeof ds.conf.data === 'string' ? (ds.conf.data as string) : ''}
-                    oninput={(e) => { ds.conf.data = (e.currentTarget as HTMLTextAreaElement).value; datasources = datasources; }}></textarea>
+        <label class="field" style="margin-top: var(--s-4);">
+          <span class="label">conf.data — raw CSV</span>
+          <textarea
+            rows="8"
+            value={typeof ds.conf.data === 'string' ? (ds.conf.data as string) : ''}
+            oninput={(e) => { ds.conf.data = (e.currentTarget as HTMLTextAreaElement).value; datasources = datasources; }}></textarea>
         </label>
       {/if}
 
       {#if ds.type === 'csv' || ds.type === 'csv+http+remote'}
-        <div class="col">
-          <div class="row" style="justify-content: space-between;">
-            <strong>conf.structure[]</strong>
-            <button onclick={() => addColumn(ds)}>+ column</button>
+        <div class="section" style="border-bottom: 0; padding-top: var(--s-5);">
+          <div class="section__head">
+            <span class="section__title">conf.structure</span>
+            <button class="btn" onclick={() => addColumn(ds)}>+ Column</button>
           </div>
           {#if !ds.conf.structure || (ds.conf.structure as CsvColumn[]).length === 0}
-            <div class="muted">At least one gcx:lat and one gcx:lon column are required.</div>
+            <p class="meta">A gcx:lat column and a gcx:lon column are required.</p>
           {/if}
           {#each (ds.conf.structure ?? []) as col, i (i)}
-            <div class="row" style="gap: 6px; align-items: flex-end;">
-              <label class="field" style="flex: 2;">column
-                <input type="text" bind:value={col.column} oninput={() => (datasources = datasources)} />
+            <div class="row wrap" style="gap: var(--s-4); align-items: flex-end;">
+              <label class="field" style="flex: 2; min-width: 140px;">
+                <span class="label">Column</span>
+                <input
+                  type="text"
+                  bind:value={col.column}
+                  oninput={() => (datasources = datasources)} />
               </label>
-              <label class="field" style="flex: 1;">type
+              <label class="field" style="flex: 1; min-width: 110px;">
+                <span class="label">Type</span>
                 <select bind:value={col.type} onchange={() => (datasources = datasources)}>
                   <option value="string">string</option>
                   <option value="number">number</option>
                   <option value="boolean">boolean</option>
                 </select>
               </label>
-              <div class="col" style="gap: 2px; flex: 3;">
-                <span class="muted">tags</span>
-                <div class="row" style="flex-wrap: wrap; gap: 4px;">
+              <div class="col" style="flex: 3; gap: var(--s-1);">
+                <span class="label">Tags</span>
+                <div class="row wrap" style="gap: var(--s-3);">
                   {#each ['gcx:lat', 'gcx:lon', 'gcx:geo', 'gcx:title'] as tag (tag)}
-                    <label class="row" style="gap: 3px;">
-                      <input type="checkbox" checked={col.tags.includes(tag)} onchange={() => toggleTag(col, tag)} />
-                      <code>{tag}</code>
+                    <label class="row" style="gap: 4px;">
+                      <input
+                        type="checkbox"
+                        checked={col.tags.includes(tag)}
+                        onchange={() => toggleTag(col, tag)} />
+                      <span class="mono">{tag}</span>
                     </label>
                   {/each}
                 </div>
               </div>
-              <button class="danger" onclick={() => removeColumn(ds, i)}>×</button>
+              <button class="btn btn--danger" onclick={() => removeColumn(ds, i)}>Remove</button>
             </div>
           {/each}
         </div>
@@ -177,3 +208,22 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .dse {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: var(--s-5);
+    align-items: stretch;
+    min-height: 100%;
+  }
+  .dse__rail {
+    display: flex;
+    flex-direction: column;
+    border-right: var(--hairline) solid var(--rule);
+    padding-right: var(--s-4);
+  }
+  .dse__editor {
+    min-width: 0;
+  }
+</style>

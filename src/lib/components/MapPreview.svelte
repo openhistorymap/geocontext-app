@@ -7,8 +7,17 @@
 
   let {
     model,
-    repo
-  }: { model: GeoContext; repo: RepoCoords | null } = $props();
+    repo,
+    repoUser = $bindable(''),
+    repoProject = $bindable(''),
+    repoRef = $bindable('HEAD')
+  }: {
+    model: GeoContext;
+    repo: RepoCoords | null;
+    repoUser?: string;
+    repoProject?: string;
+    repoRef?: string;
+  } = $props();
 
   let container: HTMLDivElement;
   let map: MlMap | null = null;
@@ -222,17 +231,78 @@
   });
 </script>
 
-<div class="col" style="height: 100%; min-height: 0;">
-  <div class="row" style="justify-content: space-between; padding: 4px 0;">
-    <strong>Live preview</strong>
-    <div class="row" style="gap: 8px;">
-      <button onclick={applyView}>recenter</button>
-      <button onclick={applyStyle}>refresh</button>
+<div class="mp">
+  <div class="mp__head">
+    <div class="col" style="gap: 2px;">
+      <span class="section__title">Preview</span>
+      <span class="section__hint">Live MapLibre render of the working document.</span>
+    </div>
+    <div class="row" style="gap: var(--s-3);">
+      <button class="btn" onclick={applyView}>Recentre</button>
+      <button class="btn" onclick={applyStyle}>Refresh</button>
     </div>
   </div>
+
   {#if lastErr}<span class="error">{lastErr}</span>{/if}
-  <div bind:this={container} style="flex: 1; min-height: 200px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border);"></div>
-  <div class="muted" style="padding: 4px 2px;">
-    Bare-relative paths use the repo coords on jsDelivr (§9). Vector-tiles only render via style.maplibre.
+
+  <div bind:this={container} class="mp__canvas"></div>
+
+  <div class="mp__coords">
+    <span class="label" style="margin: 0;">Repo coords</span>
+    <input class="mp__inp" type="text" placeholder="user" bind:value={repoUser} />
+    <span class="mp__sep">/</span>
+    <input class="mp__inp" type="text" placeholder="project" bind:value={repoProject} />
+    <span class="mp__sep">@</span>
+    <input class="mp__inp mp__inp--narrow" type="text" placeholder="HEAD" bind:value={repoRef} />
   </div>
+
+  <p class="meta" style="margin: 0;">
+    Bare-relative paths resolve through jsDelivr when repo coords are set
+    (§9). Vector-tile sources only render through the raw <span class="mono">style.maplibre</span> escape hatch.
+  </p>
 </div>
+
+<style>
+  .mp {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    height: 100%;
+    min-height: 0;
+  }
+  .mp__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--s-3);
+  }
+  .mp__canvas {
+    flex: 1;
+    min-height: 240px;
+    border: var(--hairline) solid var(--rule);
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+  .mp__coords {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    border-top: var(--hairline) solid var(--rule-soft);
+    padding-top: var(--s-2);
+    flex-wrap: wrap;
+  }
+  .mp__inp {
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: var(--t-sm);
+    color: var(--ink);
+    background: transparent;
+    border: 0;
+    border-bottom: var(--hairline) solid var(--rule);
+    padding: 2px 0;
+    width: 110px;
+  }
+  .mp__inp--narrow { width: 70px; }
+  .mp__inp:focus { outline: none; border-color: var(--accent); }
+  .mp__sep { color: var(--ink-mute); font-family: var(--font-mono); font-size: var(--t-sm); }
+</style>

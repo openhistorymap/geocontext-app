@@ -18,12 +18,11 @@
   type Tab = 'general' | 'datasources' | 'layers' | 'json';
   let tab = $state<Tab>('general');
 
-  // Single source of truth — children mutate this via $bindable
+  // Single source of truth — children mutate via $bindable
   let working = $state<GeoContext>(emptyGeoContext());
   let opened = $state<{ folder: string; filename: 'geocontext.json' | 'gcx.json' } | null>(null);
   let dirty = $state(false);
 
-  // Repo coords for §9 path rewrite in the preview
   let repoUser = $state('');
   let repoProject = $state('');
   let repoRef = $state('HEAD');
@@ -34,18 +33,16 @@
   let issues = $derived(validate(working));
   let summary = $derived(summarize(issues));
   let tauri = $derived(isTauri());
-  let statusText = $derived(
-    opened ? `${opened.folder}/${opened.filename}${dirty ? ' •' : ''}` : 'No repo open'
-  );
 
-  // Track edits as dirty by hashing the model when the user is the cause.
-  // We use a lightweight "user touched something" hook: any change after
-  // load flips dirty true until save.
   let baseline = $state<string>(JSON.stringify(emptyGeoContext()));
   $effect(() => {
     const cur = JSON.stringify(working);
     if (cur !== baseline) dirty = true;
   });
+
+  function fmtCount(n: number): string {
+    return n.toString().padStart(2, '0');
+  }
 
   async function openRepo() {
     const folder = await pickFolder();
@@ -80,10 +77,7 @@
   }
 
   async function save() {
-    if (!opened) {
-      alert('Open or create a repo folder first.');
-      return;
-    }
+    if (!opened) { alert('Open or create a repo folder first.'); return; }
     try {
       const content = JSON.stringify(working, null, 2) + '\n';
       await saveGeoContext(opened.folder, opened.filename, content);
@@ -112,44 +106,58 @@
     working = emptyGeoContext();
     dirty = true;
   }
+
+  // Truncate long paths from the left for the header
+  function shortPath(p: string, max = 64): string {
+    if (p.length <= max) return p;
+    return '…' + p.slice(p.length - max + 1);
+  }
 </script>
 
-<div style="display: grid; grid-template-rows: auto auto 1fr; height: 100vh;">
-  <div class="toolbar">
-    <button onclick={openRepo} disabled={!tauri}>Open folder…</button>
-    <button onclick={newRepo} disabled={!tauri}>New repo…</button>
-    <button class="primary" onclick={save} disabled={!opened || !tauri}>Save</button>
-    {#if opened?.filename === 'gcx.json'}
-      <button onclick={saveAsGeoContext} title="rename legacy file to geocontext.json">Save as geocontext.json</button>
-    {/if}
-    <button onclick={resetModel}>Reset</button>
-    <span class="muted" style="margin-left: 12px;">{statusText}</span>
-    {#if !tauri}
-      <span class="muted" style="margin-left: 8px; color: var(--warn);">
-        (running outside Tauri — Open / New / Save disabled)
-      </span>
-    {/if}
-    <div style="flex: 1;"></div>
-    <span class="muted">repo coords:</span>
-    <input type="text" placeholder="user" bind:value={repoUser} style="width: 110px;" />
-    <span class="muted">/</span>
-    <input type="text" placeholder="project" bind:value={repoProject} style="width: 130px;" />
-    <span class="muted">@</span>
-    <input type="text" placeholder="HEAD" bind:value={repoRef} style="width: 80px;" />
-    <span class="muted" style="margin-left: 12px;">
-      {summary.errors} err / {summary.warns} warn
-    </span>
-  </div>
+<div class="plate">
+  <header class="plate__header">
+    <h1 class="plate__brand">
+      <span class="brand-mark">◐</span> GeoContext
+      <span class="brand-sub">Editor</span>
+    </h1>
 
-  <div class="tabs">
-    <button class:active={tab === 'general'} onclick={() => (tab = 'general')}>General</button>
-    <button class:active={tab === 'datasources'} onclick={() => (tab = 'datasources')}>Datasources ({working.datasources?.length ?? 0})</button>
-    <button class:active={tab === 'layers'} onclick={() => (tab = 'layers')}>Layers ({working.layers?.length ?? 0})</button>
-    <button class:active={tab === 'json'} onclick={() => (tab = 'json')}>JSON</button>
-  </div>
+    <div class="plate__meta">
+      {#if opened}
+        <span class="path mono">{shortPath(`${opened.folder}/${opened.filename}`)}</span>
+        {#if dirty}<span class="status">Unsaved</span>{/if}
+      {:else}
+        <span class="meta">No repository open. Open or create one to begin.</span>
+      {/if}
+    </div>
 
-  <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 45%); min-height: 0;">
-    <div style="overflow: auto; padding: 12px; min-height: 0;">
+    <div class="plate__actions">
+      <button class="btn" onclick={openRepo} disabled={!tauri}>Open</button>
+      <button class="btn" onclick={newRepo} disabled={!tauri}>New</button>
+      <button class="btn" onclick={resetModel}>Reset</button>
+      {#if opened?.filename === 'gcx.json'}
+        <button class="btn" onclick={saveAsGeoContext} title="rename legacy file to geocontext.json">Promote</button>
+      {/if}
+      <button class="btn btn--primary" onclick={save} disabled={!opened || !tauri}>Save</button>
+    </div>
+  </header>
+
+  <nav class="plate__tabs" aria-label="editor sections">
+    <button class="tab" class:is-active={tab === 'general'} onclick={() => (tab = 'general')}>
+      General
+    </button>
+    <button class="tab" class:is-active={tab === 'datasources'} onclick={() => (tab = 'datasources')}>
+      Datasources <span class="tab__count">{fmtCount(working.datasources?.length ?? 0)}</span>
+    </button>
+    <button class="tab" class:is-active={tab === 'layers'} onclick={() => (tab = 'layers')}>
+      Layers <span class="tab__count">{fmtCount(working.layers?.length ?? 0)}</span>
+    </button>
+    <button class="tab" class:is-active={tab === 'json'} onclick={() => (tab = 'json')}>
+      Source
+    </button>
+  </nav>
+
+  <main class="plate__body">
+    <section class="plate__editor">
       {#if tab === 'general'}
         <TopLevelForm bind:model={working} {issues} />
       {:else if tab === 'datasources'}
@@ -159,9 +167,24 @@
       {:else}
         <JsonView bind:model={working} />
       {/if}
-    </div>
-    <div style="border-left: 1px solid var(--border); padding: 8px; min-height: 0; display: flex; flex-direction: column;">
-      <MapPreview model={working} {repo} />
-    </div>
-  </div>
+    </section>
+
+    <section class="plate__preview">
+      <MapPreview model={working} {repo} bind:repoUser bind:repoProject bind:repoRef />
+    </section>
+  </main>
+
+  <footer class="plate__footer">
+    <span class="stats">
+      {fmtCount(working.layers?.length ?? 0)} layers · {fmtCount(working.datasources?.length ?? 0)} sources
+    </span>
+    <span class="issues" class:issues--has-error={summary.errors > 0}>
+      {summary.errors} {summary.errors === 1 ? 'error' : 'errors'}
+      ·
+      {summary.warns} {summary.warns === 1 ? 'warning' : 'warnings'}
+    </span>
+    <span class="version mono">
+      {#if !tauri}browser preview · {/if}geocontext-editor / 0.2.0
+    </span>
+  </footer>
 </div>

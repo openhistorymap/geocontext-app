@@ -53,8 +53,8 @@
     const list = pathIssues.get(`${lPath}.${rel}`);
     return list?.length ? list.map((i) => i.message).join('; ') : null;
   }
+  function pad(n: number): string { return n.toString().padStart(3, '0'); }
 
-  // Keep the maplibre textarea synced when switching layers
   $effect(() => {
     if (!l) { mlText = ''; return; }
     mlText = l.style?.maplibre ? JSON.stringify(l.style.maplibre, null, 2) : '';
@@ -81,44 +81,53 @@
   }
 </script>
 
-<div class="row" style="gap: 12px; align-items: stretch; height: 100%;">
-  <!-- list -->
-  <div class="card col" style="width: 240px; max-height: 100%; overflow: auto;">
-    <div class="row" style="justify-content: space-between;">
-      <strong>Layers <span class="muted">(top = drawn on top)</span></strong>
-      <button onclick={add}>+ add</button>
+<div class="lse">
+  <aside class="lse__rail">
+    <div class="section__head" style="padding-block: var(--s-1) var(--s-3);">
+      <span class="section__title">Layers</span>
+      <button class="btn" onclick={add}>+ Add</button>
     </div>
+    <p class="meta" style="margin: 0 0 var(--s-2) 0;">Top of list draws on top.</p>
     {#if layers.length === 0}
-      <div class="muted">No layers yet.</div>
-    {/if}
-    {#each layers as ly, i (i)}
-      <div class="row" style="gap: 4px; align-items: stretch;">
-        <button class:primary={selected === i} style="flex: 1; text-align: left;" onclick={() => (selected = i)}>
-          {ly.name || '(unnamed)'}
-          <div class="muted">{ly.type}{ly.datasource ? ` ← ${ly.datasource}` : ''}</div>
-        </button>
-        <div class="col" style="gap: 2px;">
-          <button title="up" onclick={() => move(i, -1)}>↑</button>
-          <button title="down" onclick={() => move(i, 1)}>↓</button>
-        </div>
-        <button class="danger" title="remove" onclick={() => remove(i)}>×</button>
-      </div>
-    {/each}
-  </div>
-
-  <!-- editor -->
-  <div class="card col" style="flex: 1; overflow: auto;">
-    {#if !l}
-      <div class="muted">Select or add a layer.</div>
+      <p class="meta" style="padding-block: var(--s-3); border-top: var(--hairline) solid var(--rule);">
+        No layers — add one to render features on the map.
+      </p>
     {:else}
-      <div class="row" style="gap: 12px;">
-        <label class="field" style="flex: 1;">name
+      <div class="rail">
+        {#each layers as ly, i (i)}
+          <div class="rail__row" class:is-current={selected === i}>
+            <button class="rail__item" onclick={() => (selected = i)}>
+              <span class="rail__idx">{pad(i + 1)}</span>
+              <span class="rail__name">
+                <span class="primary">{ly.name || '(unnamed)'}</span>
+                <span class="secondary">{ly.type}{ly.datasource ? ` ← ${ly.datasource}` : ''}</span>
+              </span>
+            </button>
+            <span class="rail__ctrls">
+              <button class="btn btn--icon" title="up" onclick={() => move(i, -1)}>↑</button>
+              <button class="btn btn--icon" title="down" onclick={() => move(i, 1)}>↓</button>
+              <button class="btn btn--icon" title="remove" onclick={() => remove(i)}>✕</button>
+            </span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </aside>
+
+  <div class="lse__editor">
+    {#if !l}
+      <p class="meta">Select or add a layer on the left.</p>
+    {:else}
+      <div class="row wrap" style="gap: var(--s-5);">
+        <label class="field" style="flex: 1; min-width: 180px;">
+          <span class="label">Name</span>
           <input type="text" bind:value={l.name} oninput={() => (layers = layers)} />
           {#if err('name')}<span class="error">{err('name')}</span>{/if}
         </label>
-        <label class="field" style="flex: 1;">type
+        <label class="field" style="flex: 1; min-width: 180px;">
+          <span class="label">Type</span>
           <select bind:value={l.type} onchange={() => (layers = layers)}>
-            <option value="features">features (geojson)</option>
+            <option value="features">features — geojson</option>
             <option value="markers">markers</option>
             <option value="raster-tiled">raster-tiled</option>
             <option value="osm-tiled">osm-tiled</option>
@@ -128,9 +137,10 @@
           </select>
         </label>
         {#if dataDriven}
-          <label class="field" style="flex: 1;">datasource
+          <label class="field" style="flex: 1; min-width: 180px;">
+            <span class="label">Datasource</span>
             <select bind:value={l.datasource} onchange={() => (layers = layers)}>
-              <option value="">(none)</option>
+              <option value="">— none —</option>
               {#each datasources as d (d.name)}
                 <option value={d.name}>{d.name}</option>
               {/each}
@@ -140,109 +150,170 @@
         {/if}
       </div>
 
-      <label class="row" style="gap: 6px;">
-        <input type="checkbox" checked={l.interactive !== false}
-               onchange={(e) => { l.interactive = (e.currentTarget as HTMLInputElement).checked; layers = layers; }} />
-        <span style="color: var(--fg);">interactive (click handlers)</span>
+      <label class="row" style="gap: var(--s-2); margin-top: var(--s-3);">
+        <input
+          type="checkbox"
+          checked={l.interactive !== false}
+          onchange={(e) => { l.interactive = (e.currentTarget as HTMLInputElement).checked; layers = layers; }} />
+        <span class="meta" style="color: var(--ink);">Interactive — handle clicks &amp; show popup</span>
       </label>
 
       {#if dataDriven}
-        <div class="card col" style="background: var(--bg-3);">
-          <strong>style.options <span class="muted">(high-level, both flavours)</span></strong>
-          <div class="row" style="gap: 8px; flex-wrap: wrap;">
-            <label class="field" style="flex: 1; min-width: 120px;">mode
+        <div class="section" style="margin-top: var(--s-4);">
+          <div class="section__head">
+            <span class="section__title">Style — high level</span>
+            <span class="section__hint">Cross-flavour. MapLibre translates to GL paint properties.</span>
+          </div>
+          <div class="row wrap" style="gap: var(--s-4);">
+            <label class="field" style="flex: 1; min-width: 130px;">
+              <span class="label">Mode</span>
               <select bind:value={l.style!.mode} onchange={() => (layers = layers)}>
                 <option value="marker">marker</option>
                 <option value="line">line</option>
                 <option value="polygon">polygon</option>
               </select>
             </label>
-            <label class="field" style="flex: 1; min-width: 100px;">radius
-              <input type="number" step="0.5" value={l.style?.options?.radius ?? 4}
-                     oninput={(e) => { (l.style!.options ??= {}).radius = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 1; min-width: 100px;">
+              <span class="label">Radius</span>
+              <input type="number" step="0.5"
+                value={l.style?.options?.radius ?? 4}
+                oninput={(e) => { (l.style!.options ??= {}).radius = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
-            <label class="field" style="flex: 1; min-width: 100px;">weight
-              <input type="number" step="0.5" value={l.style?.options?.weight ?? 1}
-                     oninput={(e) => { (l.style!.options ??= {}).weight = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 1; min-width: 100px;">
+              <span class="label">Weight</span>
+              <input type="number" step="0.5"
+                value={l.style?.options?.weight ?? 1}
+                oninput={(e) => { (l.style!.options ??= {}).weight = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
-            <label class="field" style="flex: 1; min-width: 120px;">color
-              <input type="color" value={l.style?.options?.color ?? '#000000'}
-                     oninput={(e) => { (l.style!.options ??= {}).color = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 0 0 auto;">
+              <span class="label">Stroke</span>
+              <input type="color"
+                value={l.style?.options?.color ?? '#000000'}
+                oninput={(e) => { (l.style!.options ??= {}).color = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
-            <label class="field" style="flex: 1; min-width: 120px;">fillColor
-              <input type="color" value={l.style?.options?.fillColor ?? '#e77148'}
-                     oninput={(e) => { (l.style!.options ??= {}).fillColor = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 0 0 auto;">
+              <span class="label">Fill</span>
+              <input type="color"
+                value={l.style?.options?.fillColor ?? '#e77148'}
+                oninput={(e) => { (l.style!.options ??= {}).fillColor = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
-            <label class="field" style="flex: 1; min-width: 100px;">fillOpacity
-              <input type="number" min="0" max="1" step="0.05" value={l.style?.options?.fillOpacity ?? 0.6}
-                     oninput={(e) => { (l.style!.options ??= {}).fillOpacity = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 1; min-width: 100px;">
+              <span class="label">Fill opacity</span>
+              <input type="number" min="0" max="1" step="0.05"
+                value={l.style?.options?.fillOpacity ?? 0.6}
+                oninput={(e) => { (l.style!.options ??= {}).fillOpacity = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
-            <label class="field" style="flex: 1; min-width: 100px;">opacity
-              <input type="number" min="0" max="1" step="0.05" value={l.style?.options?.opacity ?? 1}
-                     oninput={(e) => { (l.style!.options ??= {}).opacity = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+            <label class="field" style="flex: 1; min-width: 100px;">
+              <span class="label">Opacity</span>
+              <input type="number" min="0" max="1" step="0.05"
+                value={l.style?.options?.opacity ?? 1}
+                oninput={(e) => { (l.style!.options ??= {}).opacity = +(e.currentTarget as HTMLInputElement).value; layers = layers; }} />
             </label>
           </div>
         </div>
 
-        <div class="card col" style="background: var(--bg-3);">
-          <div class="row" style="justify-content: space-between;">
-            <strong>style.maplibre <span class="muted">(raw MapLibre GL — escape hatch)</span></strong>
-            <button onclick={commitMaplibre}>apply</button>
+        <div class="section">
+          <div class="section__head">
+            <span class="section__title">Style — raw MapLibre</span>
+            <button class="btn" onclick={commitMaplibre}>Apply</button>
           </div>
-          <textarea rows="8" bind:value={mlText}
-                    placeholder={'[\n  { "type": "circle", "paint": { "circle-radius": 4 } }\n]'}></textarea>
+          <span class="section__hint">
+            Escape hatch for data-driven expressions and heatmaps. Single object or array.
+          </span>
+          <textarea
+            rows="8"
+            bind:value={mlText}
+            placeholder={"[\n  { \"type\": \"circle\", \"paint\": { \"circle-radius\": 4 } }\n]"}
+          ></textarea>
           {#if mlError}<span class="error">JSON: {mlError}</span>{/if}
-          {#each pathIssues.get(`${lPath}.style.maplibre.0.type`) ?? [] as iss (iss.message)}<span class="error">{iss.message}</span>{/each}
+          {#each pathIssues.get(`${lPath}.style.maplibre.0.type`) ?? [] as iss (iss.message)}
+            <span class="error">{iss.message}</span>
+          {/each}
         </div>
 
-        <div class="card col" style="background: var(--bg-3);">
-          <strong>detail <span class="muted">(per-feature panel)</span></strong>
-          <label class="field">detail.title (feature property key for the heading)
-            <input type="text" placeholder="tomba"
-                   value={l.detail?.title ?? ''}
-                   oninput={(e) => { (l.detail ??= {}).title = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+        <div class="section">
+          <div class="section__head">
+            <span class="section__title">Detail</span>
+            <span class="section__hint">Per-feature panel in the sidebar.</span>
+          </div>
+          <label class="field">
+            <span class="label">Title property</span>
+            <input
+              type="text"
+              placeholder="e.g. tomba"
+              value={l.detail?.title ?? ''}
+              oninput={(e) => { (l.detail ??= {}).title = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
           </label>
 
-          <div class="row" style="justify-content: space-between;">
-            <strong>detail.media[]</strong>
-            <button onclick={() => addMedia(l)}>+ media</button>
+          <div class="section__head" style="padding-top: var(--s-3);">
+            <span class="section__title">Media</span>
+            <button class="btn" onclick={() => addMedia(l)}>+ Item</button>
           </div>
           {#each (l.detail?.media ?? []) as m, i (i)}
-            <div class="row" style="gap: 6px; align-items: flex-end;">
-              <label class="field" style="flex: 1;">kind
+            <div class="row wrap" style="gap: var(--s-3); align-items: flex-end;">
+              <label class="field" style="flex: 1; min-width: 110px;">
+                <span class="label">Kind</span>
                 <select bind:value={m.kind} onchange={() => (layers = layers)}>
                   <option value="image">image</option>
                   <option value="html">html</option>
                   <option value="download">download</option>
                 </select>
               </label>
-              <label class="field" style="flex: 3;">src
-                <input type="text" placeholder="tombe/Tomba_{'{tomba}'}.html"
-                       value={m.src}
-                       oninput={(e) => { m.src = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+              <label class="field" style="flex: 3; min-width: 220px;">
+                <span class="label">Source</span>
+                <input
+                  type="text"
+                  placeholder={"tombe/Tomba_{tomba}.html"}
+                  value={m.src}
+                  oninput={(e) => { m.src = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
                 {#if err(`detail.media.${i}.src`)}<span class="error">{err(`detail.media.${i}.src`)}</span>{/if}
               </label>
-              <label class="field" style="flex: 2;">label
-                <input type="text" placeholder="Schizzo / Scheda / DOCX"
-                       value={m.label ?? ''}
-                       oninput={(e) => { m.label = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
+              <label class="field" style="flex: 2; min-width: 160px;">
+                <span class="label">Label</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Schizzo / Scheda / DOCX"
+                  value={m.label ?? ''}
+                  oninput={(e) => { m.label = (e.currentTarget as HTMLInputElement).value; layers = layers; }} />
               </label>
-              <button class="danger" onclick={() => removeMedia(l, i)}>×</button>
+              <button class="btn btn--danger" onclick={() => removeMedia(l, i)}>Remove</button>
             </div>
           {/each}
         </div>
       {:else}
-        <div class="card col" style="background: var(--bg-3);">
-          <strong>conf <span class="muted">(type-specific)</span></strong>
-          <label class="field">conf JSON
-            <textarea rows="6"
-                      value={JSON.stringify(l.conf ?? {}, null, 2)}
-                      onchange={(e) => {
-                        try { l.conf = JSON.parse((e.currentTarget as HTMLTextAreaElement).value); layers = layers; } catch {}
-                      }}></textarea>
+        <div class="section">
+          <div class="section__head">
+            <span class="section__title">conf</span>
+            <span class="section__hint">Type-specific config (tile URL, etc.).</span>
+          </div>
+          <label class="field">
+            <span class="label">JSON</span>
+            <textarea
+              rows="6"
+              value={JSON.stringify(l.conf ?? {}, null, 2)}
+              onchange={(e) => {
+                try { l.conf = JSON.parse((e.currentTarget as HTMLTextAreaElement).value); layers = layers; } catch {}
+              }}></textarea>
           </label>
         </div>
       {/if}
     {/if}
   </div>
 </div>
+
+<style>
+  .lse {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: var(--s-5);
+    align-items: stretch;
+    min-height: 100%;
+  }
+  .lse__rail {
+    display: flex;
+    flex-direction: column;
+    border-right: var(--hairline) solid var(--rule);
+    padding-right: var(--s-4);
+  }
+  .lse__editor { min-width: 0; }
+</style>

@@ -20,11 +20,37 @@
   }
 </script>
 
-<div class="col" style="height: 100%;">
-  <div class="row" style="justify-content: space-between;">
-    <span class="muted">Raw geocontext.json — edits apply on click</span>
-    <button class="primary" onclick={apply}>apply</button>
+<div class="jv">
+  <div class="section__head" style="padding-block: 0 var(--s-3);">
+    <div class="col" style="gap: 2px;">
+      <span class="section__title">Source</span>
+      <span class="section__hint">Edits land on Apply. Use this for fields the form doesn't expose.</span>
+    </div>
+    <button class="btn btn--primary" onclick={apply}>Apply</button>
   </div>
-  {#if err}<span class="error">JSON: {err}</span>{/if}
-  <textarea bind:value={text} style="flex: 1; min-height: 0;"></textarea>
+  {#if err}<span class="error" style="margin-bottom: var(--s-2);">JSON: {err}</span>{/if}
+  <textarea class="jv__editor" bind:value={text} spellcheck="false"></textarea>
 </div>
+
+<style>
+  .jv {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .jv__editor {
+    flex: 1;
+    min-height: 0;
+    font-family: var(--font-mono);
+    font-size: var(--t-sm);
+    line-height: 1.6;
+    background: var(--bg-raised);
+    color: var(--ink);
+    border: var(--hairline) solid var(--rule);
+    padding: var(--s-3);
+    resize: none;
+    width: 100%;
+  }
+  .jv__editor:focus { outline: none; border-color: var(--accent); }
+</style>
