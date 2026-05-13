@@ -9,11 +9,42 @@ on:
         description: 'Tag for the release (e.g. v0.1.0)'
         required: true
 
-permissions:
-  contents: write
-
 jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    outputs:
+      release_id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: create draft release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.payload.inputs?.tag || context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `GeoContext Editor ${tag}`,
+              body: [
+                `Bundled artifacts for ${tag}.`,
+                '',
+                'Replace the placeholder icons in `src-tauri/icons/` with a real one',
+                'before promoting this draft to a published release.'
+              ].join('\n'),
+              draft: true,
+              prerelease: false
+            });
+            return data.id;
+
   build:
+    needs: create-release
+    permissions:
+      contents: write
     name: ${{ matrix.platform.name }}
     runs-on: ${{ matrix.platform.os }}
     strategy:
@@ -55,17 +86,10 @@ jobs:
       - name: generate placeholder icons
         run: node scripts/gen-icon.cjs
 
-      - name: build with tauri-action
+      - name: build and upload with tauri-action
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'GeoContext Editor ${{ github.event.inputs.tag || github.ref_name }}'
-          releaseBody: |
-            Bundled artifacts for ${{ github.event.inputs.tag || github.ref_name }}.
-            Replace the placeholder icons in `src-tauri/icons/` with a real one
-            before promoting this draft to a published release.
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.platform.args }}
