@@ -57,6 +57,39 @@ function makePng(width, height, rgba) {
   ]);
 }
 
+// PNG-in-ICO container. Vista+ Windows reads PNG payloads directly,
+// so a one-image ICO with a PNG body is the simplest valid form.
+function makeIco(pngBuffers) {
+  const HEADER = 6;
+  const ENTRY = 16;
+  const dataStart = HEADER + ENTRY * pngBuffers.length;
+
+  const header = Buffer.alloc(HEADER);
+  header.writeUInt16LE(0, 0);              // reserved
+  header.writeUInt16LE(1, 2);              // type: 1 = ICO
+  header.writeUInt16LE(pngBuffers.length, 4);
+
+  const entries = Buffer.alloc(ENTRY * pngBuffers.length);
+  let offset = dataStart;
+  pngBuffers.forEach((buf, i) => {
+    const e = i * ENTRY;
+    // width/height encode 0 for 256
+    const w = buf.size >= 256 ? 0 : buf.size;
+    const h = buf.size >= 256 ? 0 : buf.size;
+    entries[e] = w;
+    entries[e + 1] = h;
+    entries[e + 2] = 0;                    // color count
+    entries[e + 3] = 0;                    // reserved
+    entries.writeUInt16LE(1, e + 4);       // planes
+    entries.writeUInt16LE(32, e + 6);      // bit depth
+    entries.writeUInt32LE(buf.data.length, e + 8);
+    entries.writeUInt32LE(offset, e + 12);
+    offset += buf.data.length;
+  });
+
+  return Buffer.concat([header, entries, ...pngBuffers.map((b) => b.data)]);
+}
+
 const iconsDir = path.join(__dirname, '..', 'src-tauri', 'icons');
 fs.mkdirSync(iconsDir, { recursive: true });
 
@@ -66,4 +99,12 @@ for (const size of [32, 128, 256, 512]) {
   fs.writeFileSync(path.join(iconsDir, `${size}x${size}.png`), png);
 }
 fs.writeFileSync(path.join(iconsDir, 'icon.png'), makePng(512, 512, COLOR));
+
+// Windows resource file: icons/icon.ico (multi-size PNG-in-ICO)
+const icoSizes = [16, 32, 48, 64, 128, 256];
+fs.writeFileSync(
+  path.join(iconsDir, 'icon.ico'),
+  makeIco(icoSizes.map((s) => ({ size: s, data: makePng(s, s, COLOR) })))
+);
+
 console.log('icons written to', iconsDir);
