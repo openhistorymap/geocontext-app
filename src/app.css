@@ -1,0 +1,117 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+
+  --bg: #ffffff;
+  --bg-2: #f6f7f9;
+  --bg-3: #eceef2;
+  --fg: #1c1f25;
+  --fg-muted: #5b6472;
+  --border: #d6dae1;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --danger: #b91c1c;
+  --warn: #b45309;
+  --ok: #166534;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --bg-2: #1b1f26;
+    --bg-3: #242932;
+    --fg: #e7e9ee;
+    --fg-muted: #97a0ad;
+    --border: #2f343d;
+    --accent: #60a5fa;
+    --accent-fg: #0b0d11;
+    --danger: #fca5a5;
+    --warn: #fcd34d;
+    --ok: #86efac;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--fg); }
+body { overflow: hidden; }
+
+button {
+  font: inherit;
+  background: var(--bg-3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+button:hover { background: var(--bg-2); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+button.danger { color: var(--danger); }
+
+input[type=text], input[type=number], select, textarea {
+  font: inherit;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 6px;
+  border-radius: 4px;
+  width: 100%;
+}
+textarea { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+label.field > input,
+label.field > select,
+label.field > textarea {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.row { display: flex; gap: 8px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.muted { color: var(--fg-muted); font-size: 12px; }
+.error { color: var(--danger); font-size: 12px; }
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.tabs > button {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 8px 14px;
+  color: var(--fg-muted);
+  border-bottom: 2px solid transparent;
+}
+.tabs > button.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}

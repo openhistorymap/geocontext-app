@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag for the release (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: linux,   os: ubuntu-24.04,  args: '' }
+          - { name: macos,   os: macos-latest,  args: '--target universal-apple-darwin' }
+          - { name: windows, os: windows-latest, args: '' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: install Tauri system deps (Linux)
+        if: matrix.platform.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libssl-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev \
+            build-essential pkg-config
+
+      - name: npm ci
+        run: npm ci
+
+      - name: generate placeholder icons
+        run: node scripts/gen-icon.cjs
+
+      - name: build with tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'GeoContext Editor ${{ github.event.inputs.tag || github.ref_name }}'
+          releaseBody: |
+            Bundled artifacts for ${{ github.event.inputs.tag || github.ref_name }}.
+            Replace the placeholder icons in `src-tauri/icons/` with a real one
+            before promoting this draft to a published release.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.platform.args }}
