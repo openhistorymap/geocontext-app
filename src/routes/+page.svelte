@@ -269,7 +269,7 @@
       {summary.warns} {summary.warns === 1 ? 'warning' : 'warnings'}
     </span>
     <span class="version mono">
-      {#if !tauri}browser preview · {/if}geocontext-editor / 0.5.1
+      {#if !tauri}browser preview · {/if}geocontext-editor / 0.5.2
     </span>
   </footer>
 </div>
