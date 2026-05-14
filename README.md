@@ -60,8 +60,13 @@ Makefile               convenience targets, all routed through Docker
 - The Tauri commands do plain filesystem I/O on a folder path the user
   picks via the dialog, so there are no scoped `fs:` ACL entries to
   maintain.
-- `bundle.active` is `false` by default in `tauri.conf.json`. Add icons
-  to `src-tauri/icons/` and flip it on to package binaries.
+- The application icon set in `src-tauri/icons/` is generated from
+  `assets/logo.png` (a square PNG, ≥ 512 px) with `make icons`
+  (`tauri icon`). Re-run it after changing the logo.
+- To enable the browser sign-in flow (GitHub OAuth Device Flow),
+  register an OAuth App on the openhistorymap organisation and set
+  `GEOCONTEXT_OAUTH_CLIENT_ID` at build time. Without it, the
+  personal-access-token path remains fully functional.
 - CSV preview isn't parsed into points inside the embedded preview —
   the GeoContext front-end is the source of truth there. The editor
   treats CSV datasources as schema-only.

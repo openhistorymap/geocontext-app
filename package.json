@@ -1,6 +1,6 @@
 {
   "name": "geocontext-editor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Tauri app to create and update GeoContext repositories (openhistorymap/geocontext-front FORMAT.md).",
   "private": true,
   "type": "module",

@@ -44,9 +44,6 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      - name: generate placeholder icons
-        run: node scripts/gen-icon.cjs
-
       - name: svelte-check
         run: npm run check
 

@@ -1,6 +1,6 @@
 [package]
 name = "geocontext-editor"
-version = "0.5.0"
+version = "0.5.1"
 description = "Tauri editor for GeoContext repositories"
 authors = ["you"]
 edition = "2021"

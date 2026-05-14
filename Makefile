@@ -18,11 +18,12 @@ help:
 build:
 	$(COMPOSE) build
 
-icons:
-	$(RUN) node scripts/gen-icon.cjs
-
-install: icons
+install:
 	$(RUN) npm install
+
+# Regenerate the icon set from assets/logo.png (square PNG, >=512px).
+icons:
+	$(RUN) npm run tauri -- icon assets/logo.png
 
 dev:
 	$(COMPOSE) run --rm --service-ports app npm run dev -- --host 0.0.0.0 --port 1420

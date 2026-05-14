@@ -83,9 +83,6 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      - name: generate placeholder icons
-        run: node scripts/gen-icon.cjs
-
       - name: build and upload with tauri-action
         uses: tauri-apps/tauri-action@v0
         env:

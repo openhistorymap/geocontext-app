@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "geocontext-editor"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "geojson",
  "git2",
